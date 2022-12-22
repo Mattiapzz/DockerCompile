@@ -1,0 +1,88 @@
+ARG ORG=dockcross
+FROM ${ORG}/linux-@TARGET_NAME@:latest
+LABEL maintainer="Paolo Bosetti <paolo.bosetti@unitn.it>"
+
+ENV WORKDIR /work
+ENV BUILDDIR /build
+ENV DEFAULT_DOCKCROSS_IMAGE @TARGET_NAME@
+# build with: docker build -t @TARGET_NAME@ .
+# then:       docker run --rm @TARGET_NAME@ > @TARGET_NAME@ && chmod a+x @TARGET_NAME@
+
+RUN mkdir /build
+
+ARG NCPUS=@NCPUS@
+
+RUN git config --global --add safe.directory /work &\ 
+    apt update && \
+    apt install -y ruby && \
+    rm -rf /var/lib/apt/lists/* && \
+    gem install gv_fsm
+
+#   __  __    _    _   _ ____    _  _____ ___  ______   __
+#  |  \/  |  / \  | \ | |  _ \  / \|_   _/ _ \|  _ \ \ / /
+#  | |\/| | / _ \ |  \| | | | |/ _ \ | || | | | |_) \ V / 
+#  | |  | |/ ___ \| |\  | |_| / ___ \| || |_| |  _ < | |  
+#  |_|  |_/_/   \_\_| \_|____/_/   \_\_| \___/|_| \_\|_|  
+# The following are almost always needed
+
+ENV OPENSSL_VERSION 3.0.1
+RUN cd ${BUILDDIR} && curl -L https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz | tar xzf - && \
+    cd openssl-${OPENSSL_VERSION} && \
+    ./Configure @OPENSSL_LINUX_TYPE@ no-shared no-tests -DL_ENDIAN --release --prefix=$CROSS_ROOT && \
+    make CC=$CROSS_TRIPLE-gcc AR=$CROSS_TRIPLE-ar RANLIB=$CROSS_TRIPLE-ranlib LD=$CROSS_TRIPLE-ld MAKEDEPPROG=$CROSS_TRIPLE-gcc PROCESSOR=ARM build_sw -j${NCPUS} && \
+    make install && \
+    cd .. && rm -rf openssl-${OPENSSL_VERSION}
+
+# ncurses
+# needed by readline
+ENV NCURSES_VERSION 6.1
+RUN cd ${BUILDDIR} && curl -L https://ftp.gnu.org/gnu/ncurses/ncurses-${NCURSES_VERSION}.tar.gz |\
+    tar xzf - && cd ncurses-${NCURSES_VERSION} && \
+    ./configure CC=$CC --prefix=$CROSS_ROOT/ --with-build-cc=cc --host=$CROSS_TRIPLE --with-shared --without-normal --without-debug --without-progs --without-ada --without-manpages --without-tests --with-build-cflags="-fPIC"  --with-build-cppflags="-fPIC" && \
+    make && make install -j${NCPUS} && \
+    cd .. && rm -rf ncurses-${NCURSES_VERSION}
+
+# readline
+# needed by lua REPL
+ENV READLINE_VERSION 8.0
+RUN cd ${BUILDDIR} && curl -L https://ftp.gnu.org/gnu/readline/readline-${READLINE_VERSION}.tar.gz | \
+    tar xzf - && cd readline-${READLINE_VERSION} && \
+    ./configure --host=${CROSS_TRIPLE} --prefix=${CROSS_ROOT} --with-curses && \
+    make && make install -j${NCPUS} && \
+    cd .. && rm -rf readline-${READLINE_VERSION}
+
+
+#    ___  ____ _____ ___ ___  _   _    _    _     
+#   / _ \|  _ \_   _|_ _/ _ \| \ | |  / \  | |    
+#  | | | | |_) || |  | | | | |  \| | / _ \ | |    
+#  | |_| |  __/ | |  | | |_| | |\  |/ ___ \| |___ 
+#   \___/|_|    |_| |___\___/|_| \_/_/   \_\_____|
+# The following are optionally enabled via cmake options
+
+# Binn (serialization library)
+@ENABLE_BINN@
+
+# Bzip2
+@ENABLE_BZIP2@
+
+# LibYAML
+@ENABLE_LIBYAML@
+
+# Lua library and REPL
+@ENABLE_LUA@
+
+# libmosquitto
+@ENABLE_MOSQUITTO@
+
+# mruby
+@ENABLE_MRUBY@
+
+# Oniguruma RegExp library
+@ENABLE_ONIGURUMA@
+
+# OpenBLAS
+@ENABLE_OPENBLAS@
+
+# ZeroMQ
+@ENABLE_ZEROMQ@
+
